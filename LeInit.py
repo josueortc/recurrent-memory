@@ -2,11 +2,10 @@
 """
 Created on Wed Sep 21 20:00:31 2016 by emin
 """
-from lasagne.init import Initializer
-from lasagne.utils import floatX
 import numpy as np
+import torch
 
-class LeInit(Initializer):
+class LeInit():
     """Initialize weights with diagonal + off-diagonal random matrix.
     Parameters
     ----------
@@ -22,4 +21,4 @@ class LeInit(Initializer):
             raise ValueError('LeInit initializer can only be used for 2D square matrices.')
             
         off_diag_part = self.offdiag_val * np.random.randn(shape[0], shape[1])
-        return floatX(np.eye(shape[0]) * self.diag_val + off_diag_part - np.diag(np.diag(off_diag_part)))
+        return torch.Tensor(np.eye(shape[0]) * self.diag_val + off_diag_part - np.diag(np.diag(off_diag_part)))

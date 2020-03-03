@@ -6,6 +6,7 @@ import numpy as np
 from scipy.misc import comb
 import scipy.stats as scistat
 
+
 def scramble(a, axis=-1):
     """
     Return an array with the values of `a` independently shuffled along the given axis
@@ -14,7 +15,7 @@ def scramble(a, axis=-1):
     idx      = np.argsort(b, axis=axis)
     shuffled = a[np.arange(a.shape[0])[:, None], idx]
     return shuffled
-    
+
 class Task(object):
 
     def __init__(self, max_iter=None, batch_size=1):
@@ -54,7 +55,7 @@ class Harvey2012(Task):
         self.total_dur = stim_dur + delay_dur + resp_dur
         self.stim_rate = stim_rate
         
-    def sample(self):                        
+    def sample(self):
         # Left-right choice         
         C              = np.random.choice([0.0, 1.0], size=(self.batch_size,))
         S              = -15.0 * (C==0.0) + 15.0 * (C==1.0)
@@ -96,7 +97,7 @@ class VarHarvey2012(Task):
         self.total_dur = stim_dur + max_delay + resp_dur
         self.stim_rate = stim_rate
         
-    def sample(self):                        
+    def sample(self):
         # Left-right choice         
         C              = np.random.choice([0.0, 1.0], size=(self.batch_size,))
         S              = -15.0 * (C==0.0) + 15.0 * (C==1.0)
@@ -310,7 +311,7 @@ class ChangeDetectionTask(Task):
         self.total_dur = stim_dur + delay_dur + resp_dur
         self.tr_cond   = tr_cond
         
-    def sample(self):            
+    def sample(self):
         if self.tr_cond == 'all_gains':
             G = (1.0/self.stim_dur) * np.random.choice([1.0], size=(self.n_loc,self.batch_size))
             G = np.repeat(G,self.n_in,axis=0).T
@@ -390,7 +391,7 @@ class VarChangeDetectionTask(Task):
         self.total_dur = stim_dur + max_delay + resp_dur
         self.tr_cond   = tr_cond
         
-    def sample(self):            
+    def sample(self):
         if self.tr_cond == 'all_gains':
             G = (1.0/self.stim_dur) * np.random.choice([1.0], size=(self.n_loc,self.batch_size))
             G = np.repeat(G,self.n_in,axis=0).T

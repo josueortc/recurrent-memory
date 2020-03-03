@@ -5,11 +5,7 @@ Created on Thu Mar  2 11:19:34 2017 @author: emin
 """
 import theano.tensor as T
 import numpy as np
-import lasagne.layers
-import lasagne.nonlinearities
-import lasagne.updates
-import lasagne.objectives
-import lasagne.init
+import torch
 import dynamic_input_generators, models
 
 def build_generators(ExptDict):
@@ -190,52 +186,54 @@ def build_generators(ExptDict):
                                           n_in=n_in, n_out=n_out, stim_dur=stim_dur,
                                           delay_dur=delay_dur, resp_dur=resp_dur, alpha=alpha)
         
-    return generator, test_generator 
+    return generator, test_generator
 
-def build_model(input_var,ExptDict):
+
+def build_model(input_var, ExptDict):
     # Unpack necessary variables
-    model      = ExptDict["model"]["model_id"]
-    n_loc      = ExptDict["task"]["n_loc"]
-    n_out      = ExptDict["task"]["n_out"]
+    model = ExptDict["model"]["model_id"]
+    n_loc = ExptDict["task"]["n_loc"]
+    n_out = ExptDict["task"]["n_out"]
     batch_size = ExptDict["batch_size"]
-    n_in       = ExptDict["n_in"]
-    n_hid      = ExptDict["n_hid"]
+    n_in = ExptDict["n_in"]
+    n_hid = ExptDict["n_hid"]
     out_nonlin = ExptDict["task"]["out_nonlin"]
-    
-    if model == 'LeInitRecurrent':  
-        diag_val     = ExptDict["model"]["diag_val"]
-        offdiag_val  = ExptDict["model"]["offdiag_val"]
-        l_out, l_rec = models.LeInitRecurrent(input_var, batch_size=batch_size, 
-                                              n_in=(n_loc+1)*n_in, n_out=n_out, 
-                                              n_hid=n_hid, diag_val=diag_val,
-                                              offdiag_val=offdiag_val,
-                                              out_nlin=out_nonlin)
-    elif model == 'OrthoInitRecurrent':  
-        init_val = ExptDict["model"]["init_val"]
-        l_out, l_rec = models.OrthoInitRecurrent(input_var, batch_size=batch_size, 
-                                              n_in=(n_loc+1)*n_in, n_out=n_out, 
-                                              n_hid=n_hid, init_val=init_val, 
-                                              out_nlin=out_nonlin)
-    elif model == 'GRURecurrent':
-        diag_val     = ExptDict["model"]["diag_val"]
-        offdiag_val  = ExptDict["model"]["offdiag_val"]
-        l_out, l_rec = models.GRURecurrent(input_var, batch_size=batch_size, 
-                                           n_in=(n_loc+1)*n_in, n_out=n_out, n_hid=n_hid, 
-                                           diag_val=diag_val, offdiag_val=offdiag_val,
-                                           out_nlin=out_nonlin)    
-    return l_out, l_rec
 
+    if model == 'LeInitRecurrent':
+        diag_val = ExptDict["model"]["diag_val"]
+        offdiag_val = ExptDict["model"]["offdiag_val"]
+        model = models.LeInitRecurrent(input_var, batch_size=batch_size,
+                                       n_in=n_loc * n_in, n_out=n_out,
+                                       n_hid=n_hid, diag_val=diag_val,
+                                       offdiag_val=offdiag_val,
+                                       out_nlin=out_nonlin)
+
+    elif model == 'OrthoInitRecurrent':
+        init_val = ExptDict["model"]["init_val"]
+        model = models.OrthoInitRecurrent(input_var, batch_size=batch_size,
+                                          n_in=n_loc * n_in, n_out=n_out,
+                                          n_hid=n_hid, init_val=init_val,
+                                          out_nlin=out_nonlin)
+    elif model == 'GRURecurrent':
+        diag_val = ExptDict["model"]["diag_val"]
+        offdiag_val = ExptDict["model"]["offdiag_val"]
+        model = models.GRURecurrent(input_var, batch_size=batch_size,
+                                    n_in=n_loc * n_in, n_out=n_out, n_hid=n_hid,
+                                    diag_val=diag_val, offdiag_val=offdiag_val,
+                                    out_nlin=out_nonlin)
+
+    return model
 def build_loss(pred_var,target_var,ExptDict):
     # Unpack necessary variables
     task     = ExptDict["task"]["task_id"]
     resp_dur = ExptDict["resp_dur"]
     
     if task in ['DE1','DE2','GDE2']:
-        loss = T.mean(T.mod(T.abs_(pred_var[:,-resp_dur:,:] - target_var[:,-resp_dur:,:]), np.pi))
+        loss = torch.fmod(torch.abs(pred_var[:, -resp_dur:, :] - target_var[:, -resp_dur:, :]), np.pi).mean()
     elif task in ['CD1','CD2','Harvey2012','Harvey2016','COMP']:
-        loss = T.mean(lasagne.objectives.binary_crossentropy(pred_var[:,-resp_dur:,-1], target_var[:,-resp_dur:,-1])) 
+        loss = torch.nn.functional.F.binary_cross_entropy(pred_var[:, -resp_dur:, -1], target_var[:, -resp_dur:, -1]).mean()
     elif task in ['SINE']:
-        loss = T.mean(T.abs_(pred_var[:,-resp_dur:,:] - target_var[:,-resp_dur:,:]))
+        loss = torch.abs(T.abs_(pred_var[:, -resp_dur:, :] - target_var[:, -resp_dur:, :])).mean()
 
     return loss
 

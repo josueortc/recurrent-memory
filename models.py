@@ -2,125 +2,102 @@
 """
 Created on Fri Jan 13 16:57:28 2017 by emin
 """
-from lasagne.layers import InputLayer, DenseLayer, ReshapeLayer, GRULayer
 from LeInit import LeInit
-from CustomRecurrentLayerWithFastWeights import CustomRecurrentLayerWithFastWeights
-import lasagne.layers
-import lasagne.nonlinearities
-import lasagne.updates
-import lasagne.objectives
-import lasagne.init
 
-def OrthoInitRecurrent(input_var, mask_var=None, batch_size=1, n_in=100, n_out=1, n_hid=200, init_val=0.9, out_nlin=lasagne.nonlinearities.linear):
-    # Input Layer
-    l_in         = InputLayer((batch_size, None, n_in), input_var=input_var)
-    if mask_var==None:
-        l_mask=None
-    else:
-        l_mask = InputLayer((batch_size, None), input_var=mask_var)
+import torch
+from torch import nn
 
-    _, seqlen, _ = l_in.input_var.shape
-    
-    l_in_hid     = DenseLayer(lasagne.layers.InputLayer((None, n_in)), n_hid,  W=lasagne.init.GlorotNormal(0.95), nonlinearity=lasagne.nonlinearities.linear)
-    l_hid_hid    = DenseLayer(lasagne.layers.InputLayer((None, n_hid)), n_hid, W=lasagne.init.Orthogonal(gain=init_val), nonlinearity=lasagne.nonlinearities.linear)
-    l_rec        = lasagne.layers.CustomRecurrentLayer(l_in, l_in_hid, l_hid_hid, nonlinearity=lasagne.nonlinearities.rectify, mask_input=l_mask, grad_clipping=100)
+class RNN(nn.Module):
+    def __init__(self, input_size=100, hidden_size=200, output_size=1, out_nlin='linear'):
+        super(RNN, self).__init__()
 
-    # Output Layer
-    l_shp        = ReshapeLayer(l_rec, (-1, n_hid))
-    l_dense      = DenseLayer(l_shp, num_units=n_out, W=lasagne.init.GlorotNormal(0.95), nonlinearity=out_nlin)
-    
-    # To reshape back to our original shape, we can use the symbolic shape variables we retrieved above.
-    l_out        = ReshapeLayer(l_dense, (batch_size, seqlen, n_out))
+        self.hidden_size = hidden_size
+        self.input_size = input_size
+        self.rnn = nn.RNNCell(input_size, hidden_size, nonlinearity='relu')
 
-    return l_out, l_rec
+        self.i2o = nn.Linear(hidden_size, output_size)
+        if out_nlin == 'linear':
+            self.non_linearity = nn.Identity()
+        elif out_nlin == 'sigmoid':
+            self.non_linearity = nn.Sigmoid()
 
-def LeInitRecurrent(input_var, mask_var=None, batch_size=1, n_in=100, n_out=1, 
+
+
+    def forward(self, input):
+        hidden = torch.zeros(input.shape[0], self.hidden_size)
+        outputs = []
+        hiddens = []
+        for i in range(input.shape[1]):
+            hidden = self.rnn(input[:, i, :], hidden)
+            hiddens.append(hidden)
+            outputs.append(self.non_linearity(self.i2o(hidden)))
+
+        outputs = torch.stack(outputs, 1)
+        return outputs, hiddens
+
+class GRU(nn.Module):
+    def __init__(self, input_size=100, hidden_size=200, out_nlin='linear', output_size=1):
+        super(GRU, self).__init__()
+
+        self.hidden_size = hidden_size
+        self.input_size = input_size
+        self.rnn = nn.GRUCell(input_size, hidden_size)
+
+        self.i2o = nn.Linear(hidden_size, output_size)
+        if out_nlin == 'linear':
+            self.non_linearity = nn.Identity()
+        elif out_nlin == 'sigmoid':
+            self.non_linearity = nn.Sigmoid()
+
+
+
+    def forward(self, input):
+        hidden = torch.zeros(input.shape[0], self.hidden_size)
+        outputs = []
+        hiddens = []
+        for i in range(input.shape[1]):
+            hidden = self.rnn(input[:,i,:], hidden)
+            hiddens.append(hidden)
+            outputs.append(self.non_linearity(self.i2o(hidden)))
+
+        outputs = torch.stack(outputs, 1)
+        return outputs, hiddens
+
+
+
+def OrthoInitRecurrent(input_var, mask_var=None, batch_size=1, n_in=100, n_out=1, n_hid=200, init_val=0.9, out_nlin='linear'):
+
+    model = RNN(input_size=n_in, hidden_size=n_hid, output_size=n_out, out_nlin=out_nlin)
+
+    nn.init.xavier_normal_(model.rnn.weight_ih, gain=0.95)
+    nn.init.orthogonal_(model.rnn.weight_hh, gain=init_val)
+    nn.init.xavier_normal_(model.i2o.weight, gain=0.95)
+
+    return model
+
+
+def LeInitRecurrent(input_var, mask_var=None, batch_size=1, n_in=100, n_out=1,
                     n_hid=200, diag_val=0.9, offdiag_val=0.01,
-                    out_nlin=lasagne.nonlinearities.linear):
+                    out_nlin='linear'):
+
+    model = RNN(input_size=n_in, hidden_size=n_hid,output_size=n_out, out_nlin=out_nlin)
+
+    nn.init.xavier_normal_(model.rnn.weight_ih, gain=0.95)
+    leint = LeInit(diag_val=diag_val, offdiag_val=offdiag_val)
+    model.rnn.weight_hh.data = leint.sample(model.rnn.weight_hh.data.shape)
+    nn.init.xavier_normal_(model.i2o.weight, gain=0.95)
+
+    return model
+
+
+def GRURecurrent(input_var, mask_var=None, batch_size=1, n_in=100, n_out=1, n_hid=200, diag_val=0.9, offdiag_val=0.01,
+                 out_nlin='linear'):
     # Input Layer
-    l_in = InputLayer((batch_size, None, n_in), input_var=input_var)
-    if mask_var==None:
-        l_mask=None
-    else:
-        l_mask = InputLayer((batch_size, None), input_var=mask_var)
 
-    _, seqlen, _ = l_in.input_var.shape
-    
-    l_in_hid = DenseLayer(lasagne.layers.InputLayer((None, n_in)), n_hid,  
-                          W=lasagne.init.GlorotNormal(0.95), 
-                          nonlinearity=lasagne.nonlinearities.linear)
-    l_hid_hid = DenseLayer(lasagne.layers.InputLayer((None, n_hid)), n_hid, 
-                           W=LeInit(diag_val=diag_val, offdiag_val=offdiag_val), 
-                           nonlinearity=lasagne.nonlinearities.linear)
-    l_rec = lasagne.layers.CustomRecurrentLayer(l_in, l_in_hid, l_hid_hid, nonlinearity=lasagne.nonlinearities.rectify, mask_input=l_mask, grad_clipping=100)
+    model = GRU(input_size=n_in, hidden_size=n_hid, output_size=n_out)
 
-    # Output Layer
-    l_shp = ReshapeLayer(l_rec, (-1, n_hid))
-    l_dense = DenseLayer(l_shp, num_units=n_out, W=lasagne.init.GlorotNormal(0.95), nonlinearity=out_nlin)
-    
-    # To reshape back to our original shape, we can use the symbolic shape variables we retrieved above.
-    l_out = ReshapeLayer(l_dense, (batch_size, seqlen, n_out))
+    nn.init.xavier_normal_(model.rnn.weight_hh, gain=0.05)
+    nn.init.xavier_normal_(model.rnn.weight_ih, gain=0.05)
+    nn.init.xavier_normal_(model.i2o.weight, gain=0.05)
 
-    return l_out, l_rec
-
-def LeInitRecurrentWithFastWeights(input_var, mask_var=None, batch_size=1, n_in=100, n_out=1, 
-                    n_hid=200, diag_val=0.9, offdiag_val=0.01,
-                    out_nlin=lasagne.nonlinearities.linear, gamma=0.9):
-    # Input Layer
-    l_in = InputLayer((batch_size, None, n_in), input_var=input_var)
-    if mask_var==None:
-        l_mask=None
-    else:
-        l_mask = InputLayer((batch_size, None), input_var=mask_var)
-
-    _, seqlen, _ = l_in.input_var.shape
-    
-    l_in_hid = DenseLayer(lasagne.layers.InputLayer((None, n_in)), n_hid,  
-                          W=lasagne.init.GlorotNormal(0.95), 
-                          nonlinearity=lasagne.nonlinearities.linear)
-    l_hid_hid = DenseLayer(lasagne.layers.InputLayer((None, n_hid)), n_hid, 
-                           W=LeInit(diag_val=diag_val, offdiag_val=offdiag_val), 
-                           nonlinearity=lasagne.nonlinearities.linear)
-    l_rec = CustomRecurrentLayerWithFastWeights(l_in, l_in_hid, l_hid_hid, 
-                                                nonlinearity=lasagne.nonlinearities.rectify,
-                                                mask_input=l_mask, grad_clipping=100, gamma=gamma)
-
-    # Output Layer
-    l_shp = ReshapeLayer(l_rec, (-1, n_hid))
-    l_dense = DenseLayer(l_shp, num_units=n_out, W=lasagne.init.GlorotNormal(0.95), nonlinearity=out_nlin)
-    
-    # To reshape back to our original shape, we can use the symbolic shape variables we retrieved above.
-    l_out = ReshapeLayer(l_dense, (batch_size, seqlen, n_out))
-
-    return l_out, l_rec
-
-
-def GRURecurrent(input_var, mask_var=None, batch_size=1, n_in=100, n_out=1, n_hid=200, diag_val=0.9, offdiag_val=0.01, out_nlin=lasagne.nonlinearities.linear):
-    # Input Layer
-    l_in         = InputLayer((batch_size, None, n_in), input_var=input_var)
-    if mask_var==None:
-        l_mask = None
-    else:
-        l_mask = InputLayer((batch_size, None), input_var=mask_var)
-        
-    _, seqlen, _ = l_in.input_var.shape
-    l_rec        = GRULayer(l_in, n_hid, 
-                            resetgate=lasagne.layers.Gate(W_in=lasagne.init.GlorotNormal(0.05), 
-                                                          W_hid=lasagne.init.GlorotNormal(0.05), 
-                                                          W_cell=None, b=lasagne.init.Constant(0.)), 
-                            updategate=lasagne.layers.Gate(W_in=lasagne.init.GlorotNormal(0.05), 
-                                                           W_hid=lasagne.init.GlorotNormal(0.05), 
-                                                           W_cell=None), 
-                            hidden_update=lasagne.layers.Gate(W_in=lasagne.init.GlorotNormal(0.05), 
-                                                              W_hid=LeInit(diag_val=diag_val, offdiag_val=offdiag_val), 
-                                                              W_cell=None, nonlinearity=lasagne.nonlinearities.rectify), 
-                            hid_init = lasagne.init.Constant(0.), backwards=False, learn_init=False, 
-                            gradient_steps=-1, grad_clipping=10., unroll_scan=False, precompute_input=True, mask_input=l_mask, only_return_final=False)
-
-    # Output Layer
-    l_shp        = ReshapeLayer(l_rec, (-1, n_hid))
-    l_dense      = DenseLayer(l_shp, num_units=n_out, W=lasagne.init.GlorotNormal(0.05), nonlinearity=out_nlin)
-    # To reshape back to our original shape, we can use the symbolic shape variables we retrieved above.
-    l_out        = ReshapeLayer(l_dense, (batch_size, seqlen, n_out))
-
-    return l_out, l_rec
+    return model

@@ -3,15 +3,10 @@
 """
 Created on Thu Mar  2 11:19:34 2017 @author: emin
 """
-import theano.tensor as T
 import numpy as np
-import lasagne.layers
-import lasagne.nonlinearities
-import lasagne.updates
-import lasagne.objectives
-import lasagne.init
 import generators, models
 from scipy.stats import entropy
+import torch
 
 def compute_SI(hidr, entrpy_bins, window_size, r_threshold):
     # Compute SI scores for a number of trials
@@ -274,35 +269,27 @@ def build_model(input_var,ExptDict):
     if model == 'LeInitRecurrent':  
         diag_val     = ExptDict["model"]["diag_val"]
         offdiag_val  = ExptDict["model"]["offdiag_val"]
-        l_out, l_rec = models.LeInitRecurrent(input_var, batch_size=batch_size, 
+        model = models.LeInitRecurrent(input_var, batch_size=batch_size,
                                               n_in=n_loc*n_in, n_out=n_out, 
                                               n_hid=n_hid, diag_val=diag_val,
                                               offdiag_val=offdiag_val,
                                               out_nlin=out_nonlin)
-    elif model == 'LeInitRecurrentWithFastWeights':  
-        diag_val     = ExptDict["model"]["diag_val"]
-        offdiag_val  = ExptDict["model"]["offdiag_val"]
-        gamma        = ExptDict["model"]["gamma"]
-        l_out, l_rec = models.LeInitRecurrentWithFastWeights(input_var, batch_size=batch_size, 
-                                              n_in=n_loc*n_in, n_out=n_out, 
-                                              n_hid=n_hid, diag_val=diag_val,
-                                              offdiag_val=offdiag_val,
-                                              out_nlin=out_nonlin, gamma=gamma)
+
     elif model == 'OrthoInitRecurrent':  
         init_val = ExptDict["model"]["init_val"]
-        l_out, l_rec = models.OrthoInitRecurrent(input_var, batch_size=batch_size, 
+        model = models.OrthoInitRecurrent(input_var, batch_size=batch_size,
                                               n_in=n_loc*n_in, n_out=n_out, 
                                               n_hid=n_hid, init_val=init_val, 
                                               out_nlin=out_nonlin)
     elif model == 'GRURecurrent':
         diag_val     = ExptDict["model"]["diag_val"]
         offdiag_val  = ExptDict["model"]["offdiag_val"]
-        l_out, l_rec = models.GRURecurrent(input_var, batch_size=batch_size, 
+        model = models.GRURecurrent(input_var, batch_size=batch_size,
                                            n_in=n_loc*n_in, n_out=n_out, n_hid=n_hid, 
                                            diag_val=diag_val, offdiag_val=offdiag_val,
                                            out_nlin=out_nonlin)
         
-    return l_out, l_rec
+    return model
 
 def build_loss(pred_var,target_var,ExptDict):
     # Unpack necessary variables
@@ -310,11 +297,11 @@ def build_loss(pred_var,target_var,ExptDict):
     resp_dur = ExptDict["resp_dur"]
     
     if task in ['DE1','DE2','GDE2','VDE1']:
-        loss = T.mean(T.mod(T.abs_(pred_var[:,-resp_dur:,:] - target_var[:,-resp_dur:,:]), np.pi))
+        loss = torch.fmod(torch.abs(pred_var[:,-resp_dur:,:] - target_var[:,-resp_dur:,:]), np.pi).mean()
     elif task in ['CD1','CD2','Harvey2012','Harvey2012Dynamic','Harvey2016','COMP']:
-        loss = T.mean(lasagne.objectives.binary_crossentropy(pred_var[:,-resp_dur:,-1], target_var[:,-resp_dur:,-1])) 
+        loss = torch.nn.functional.F.binary_cross_entropy(pred_var[:,-resp_dur:,-1], target_var[:,-resp_dur:,-1]).mean()
     elif task in ['SINE']:
-        loss = T.mean(T.abs_(pred_var[:,-resp_dur:,:] - target_var[:,-resp_dur:,:]))
+        loss = torch.abs(T.abs_(pred_var[:,-resp_dur:,:] - target_var[:,-resp_dur:,:])).mean()
 
     return loss
 
@@ -327,8 +314,7 @@ def build_performance(s_vec,opt_vec,net_vec,ExptDict):
         rmse_net = np.nanmean(np.mod(np.abs(np.squeeze(s_vec) - np.squeeze(net_vec)), np.pi))
         infloss  = (rmse_net - rmse_opt) / rmse_opt
     elif task in ['CD1','CD2','Harvey2012','Harvey2012Dynamic','Harvey2016','COMP']:
-        infloss = np.nanmean( opt_vec * np.log(opt_vec/net_vec) + (1.0 - opt_vec) * np.log((1.0 - opt_vec)/(1.0 - net_vec)) ) / 
-        np.nanmean( opt_vec * np.log(2.0*opt_vec) + (1.0-opt_vec) * np.log(2.0*(1.0-opt_vec)) ) 
+        infloss = np.nanmean( opt_vec * np.log(opt_vec/net_vec) + (1.0 - opt_vec) * np.log((1.0 - opt_vec)/(1.0 - net_vec)))/np.nanmean(opt_vec * np.log(2.0*opt_vec) + (1.0-opt_vec) * np.log(2.0*(1.0-opt_vec)))
     elif task in ['SINE']:
         infloss = np.mean(np.abs(np.squeeze(opt_vec) - np.squeeze(net_vec)))
     return infloss

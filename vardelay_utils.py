@@ -3,11 +3,9 @@
 """
 Created on Thu Mar  2 11:19:34 2017 @author: emin
 """
-import theano.tensor as T
 import numpy as np
 import generators, models
-from lasagne.objectives import binary_crossentropy
-
+import torch
 def build_generators(t_ind):
     if t_ind==0:
         generator = generators.VarDelayedEstimationTask(max_iter=25001, batch_size=50, n_loc=1, n_in=50, n_out=1,
@@ -51,9 +49,9 @@ def build_generators(t_ind):
 
 def build_loss(pred_var, target_var, resp_dur, t_ind):
     if t_ind==0 or t_ind==1 or t_ind==4:
-        loss = T.mean(T.mod(T.abs_(pred_var[:, -resp_dur:, :] - target_var[:, -resp_dur:, :]), np.pi))
+        loss = torch.fmod(torch.abs(pred_var[:,-resp_dur:,:] - target_var[:,-resp_dur:,:]), np.pi).mean()
     elif t_ind==2 or t_ind==6 or t_ind==8:
-        loss = T.mean(binary_crossentropy(pred_var[:,-resp_dur:,-1], target_var[:,-resp_dur:,-1]))
+        loss = torch.nn.functional.F.binary_cross_entropy(pred_var[:, -resp_dur:, -1], target_var[:, -resp_dur:, -1]).mean()
     return loss
 
 def build_performance(s_vec, opt_vec, net_vec, t_ind):
