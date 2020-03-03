@@ -65,7 +65,7 @@ class GRU(nn.Module):
 
 
 
-def OrthoInitRecurrent(input_var, mask_var=None, batch_size=1, n_in=100, n_out=1, n_hid=200, init_val=0.9, out_nlin='linear'):
+def OrthoInitRecurrent(input_var, batch_size=1, n_in=100, n_out=1, n_hid=200, init_val=0.9, out_nlin='linear'):
 
     model = RNN(input_size=n_in, hidden_size=n_hid, output_size=n_out, out_nlin=out_nlin)
 
@@ -94,7 +94,7 @@ def GRURecurrent(input_var, mask_var=None, batch_size=1, n_in=100, n_out=1, n_hi
                  out_nlin='linear'):
     # Input Layer
 
-    model = GRU(input_size=n_in, hidden_size=n_hid, output_size=n_out)
+    model = GRU(input_size=n_in, hidden_size=n_hid, output_size=n_out, mask_var=mask_var)
 
     nn.init.xavier_normal_(model.rnn.weight_hh, gain=0.05)
     nn.init.xavier_normal_(model.rnn.weight_ih, gain=0.05)
